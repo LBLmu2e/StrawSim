@@ -2,13 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class StrawModel:
-    def __init__(self, length_L=1.0, winding_angle_deg=37.0):
+    def __init__(self, length_L=1.0, winding_angle_deg=37.0,Z_term=284.5):
         """
         Initializes the straw tube detector with its physical dimensions and material constants.
         The dynamic, frequency-dependent skin depth corrections are calculated during execution.
         """
         self.length_L = length_L
         self.theta = np.radians(winding_angle_deg)
+        self.Z_termination_A= Z_term
+        self.Z_termination_B= Z_term
 
         # Material Resistivities (Ohm * m)
         self.rho_W = 5.60e-8    # Tungsten core
@@ -100,9 +102,7 @@ class StrawModel:
             freq_max_mhz=15000.0,
             num_points=16384,
             input_time=None,
-            input_current=None,
-            Z_termination_A=50.0,
-            Z_termination_B=50.0
+            input_current=None
             ):
         """
         Computes the real-time voltage waveforms using the skin-effect corrected transmission matrix.
@@ -129,8 +129,8 @@ class StrawModel:
             # Fetch dynamic parameters for the current frequency index
             Z0, gamma = self._get_frequency_dependent_impedance(f)
 
-            Gamma_A = (Z_termination_A - Z0) / (Z_termination_A + Z0)
-            Gamma_B = (Z_termination_B - Z0) / (Z_termination_B + Z0)
+            Gamma_A = (self.Z_termination_A - Z0) / (self.Z_termination_A + Z0)
+            Gamma_B = (self.Z_termination_B - Z0) / (self.Z_termination_B + Z0)
 
             x_A = inject_l
             x_B = self.length_L - inject_l
@@ -151,37 +151,21 @@ class StrawModel:
 
         return time_axis, v_A, v_B
 
-    def plot_comparison(self, inject_l):
+    def plot_response(self, inject_l):
         """Plots standard 50 Ohm electronic matching versus an updated dynamic matched load."""
-        t, v_A_50, v_B_50 = self.compute_response(
-                inject_l=inject_l, Z_termination_A=50.0, Z_termination_B=50.0
-                )
-
-        # High frequency asymptotic impedance approaches roughly 284.5 Ohms
-        Z_match = 284.50
-        _, v_A_match, v_B_match = self.compute_response(
-                inject_l=inject_l, Z_termination_A=Z_match, Z_termination_B=Z_match
-                )
+        t, v_A, v_B = self.compute_response(
+                inject_l=inject_l)
 
         t_ns = t * 1e9
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
+        fig, (ax1) = plt.subplots(1, 1, figsize=(11, 4), sharex=True)
 
-        # Mismatched Plot
-        ax1.plot(t_ns, v_A_50 * 1e3, label=f'End A (x = 0m, Dist = {inject_l}m)', color='#1f77b4', linewidth=1.8)
-        ax1.plot(t_ns, v_B_50 * 1e3, label=f'End B (x = {self.length_L}m, Dist = {self.length_L-inject_l:.2f}m)', color='#ff7f0e', linewidth=1.8)
-        ax1.set_title('Mismatched Termination (Standard 50 Ω Electronic Readout Layout)', fontsize=11, fontweight='bold')
+        ax1.plot(t_ns, v_A * 1e3, label=f'End A (x = 0m, Dist = {inject_l}m)', color='#1f77b4', linewidth=1.8)
+        ax1.plot(t_ns, v_B * 1e3, label=f'End B (x = {self.length_L}m, Dist = {self.length_L-inject_l:.2f}m)', color='#ff7f0e', linewidth=1.8)
+        title = f"Length=,{self.length_L}zterm=,{self.Z_termination_A}"
+        ax1.set_title(title,fontsize=11, fontweight='bold')
         ax1.set_ylabel('Voltage (mV)', fontsize=10)
         ax1.grid(True, linestyle='--', alpha=0.5)
         ax1.legend(loc='upper right')
-
-        # Matched Plot
-        ax2.plot(t_ns, v_A_match * 1e3, label='End A (Matched)', color='#2ca02c', linewidth=1.8)
-        ax2.plot(t_ns, v_B_match * 1e3, label='End B (Matched)', color='#d62728', linewidth=1.8)
-        ax2.set_title(f'Perfectly Matched High-Frequency Termination (Z_load = {Z_match} Ω)', fontsize=11, fontweight='bold')
-        ax2.set_xlabel('Time (ns)', fontsize=11)
-        ax2.set_ylabel('Voltage (mV)', fontsize=10)
-        ax2.grid(True, linestyle='--', alpha=0.5)
-        ax2.legend(loc='upper right')
 
         plt.suptitle(f'Straw Tube Pulse Response WITH Dynamic Skin Effect Corrections\n(Injection Site: {inject_l}m | Total Length: {self.length_L}m)', fontsize=13, fontweight='bold', y=0.96)
         plt.xlim(0, 15)

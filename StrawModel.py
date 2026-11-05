@@ -188,7 +188,3 @@ class StrawModel:
         plt.tight_layout()
         plt.show()
 
-if __name__ == "__main__":
-    # Create the model using dimensions specified in the prompt
-    straw_detector = StrawModel(length_L=1.0, winding_angle_deg=37.0)
-    straw_detector.plot_comparison(inject_l=0.3)

@@ -161,7 +161,7 @@ class StrawModel:
 
         ax1.plot(t_ns, v_A * 1e3, label=f'End A (x = 0m, Dist = {inject_l}m)', color='#1f77b4', linewidth=1.8)
         ax1.plot(t_ns, v_B * 1e3, label=f'End B (x = {self.length_L}m, Dist = {self.length_L-inject_l:.2f}m)', color='#ff7f0e', linewidth=1.8)
-        title = f"Length=,{self.length_L}zterm=,{self.Z_termination_A}"
+        title = f"Length={self.length_L}, zterm={self.Z_termination_A}"
         ax1.set_title(title,fontsize=11, fontweight='bold')
         ax1.set_ylabel('Voltage (mV)', fontsize=10)
         ax1.grid(True, linestyle='--', alpha=0.5)

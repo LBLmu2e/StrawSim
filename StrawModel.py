@@ -209,3 +209,6 @@ class StrawModel:
         ax2.plot(t_ns, v_B_mv, label=f'End B (x = {self.length_L}m, Dist = {self.length_L-inject_l:.2f}m)', color='#ff7f0e', linewidth=1.8)
         ax2.set_title(f'Output Response (Termination Load: Z_term = {self.Z_termination} Ω)', fontsize=11, fontweight='bold')
         ax2.set_xlabel('Time (ns)', fontsize=11)
+
+        plt.xlim(0, time_window_ns)
+

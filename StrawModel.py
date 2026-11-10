@@ -37,7 +37,7 @@ class StrawModel:
 
     def _get_frequency_dependent_impedance(self, f):
         """Calculates dynamic Z0 and gamma incorporating skin-depth and layout parameters."""
-        if f == 0:
+        if f <= 1e-3:
             R_wire_dc = 1.0 / ((np.pi * self.r_W_core**2 / self.rho_W) +
                                (np.pi * (self.r_inner_wire**2 - self.r_W_core**2) / self.rho_Au))
             G_width_shield_dc = (self.t_Al_layer / self.rho_Al) * 2.0
@@ -70,11 +70,42 @@ class StrawModel:
         R_shield = 1.0 / (G_width * np.pi * self.D_out * (np.cos(self.theta)**2))
 
         R_dynamic = R_wire + R_shield
-        L_dynamic = self.L_line + (R_dynamic / w)
+
+        L_internal_max = 0.05 * self.L_line
+        L_internal = min(R_dynamic / w, L_internal_max)
+        L_dynamic = self.L_line + L_internal
 
         Z0 = np.sqrt((R_dynamic + 1j * w * L_dynamic) / (self.G_line + 1j * w * self.C_line))
         gamma = np.sqrt((R_dynamic + 1j * w * L_dynamic) * (self.G_line + 1j * w * self.C_line))
         return Z0, gamma
+
+    def _compute_single_end_response(self, x_near, x_far, freqs, I_omega):
+        """
+        Low-level primitive that solves the frequency-domain boundary equation for a
+        single readout end located x_near meters away from the source injection point.
+        """
+        V_end_omega = np.zeros_like(I_omega, dtype=complex)
+
+        for idx, f in enumerate(freqs):
+            Z0, gamma = self._get_frequency_dependent_impedance(f)
+            Gamma = (self.Z_termination - Z0) / (self.Z_termination + Z0)
+
+            # Initial voltage wave injection magnitude
+            V_initial = (I_omega[idx] * Z0) / 2.0
+
+            # Infinite boundary round-trip loop lattice denominator
+            loop_factor = 1.0 - (Gamma ** 2) * np.exp(-2.0 * gamma * self.length_L)
+
+            # Wave components arriving at this specific near end:
+            # 1. The forward/backward wave propagating directly over x_near
+            # 2. The opposite wave traveling x_far, bouncing off the far end, and returning over the full length L
+            V_direct = V_initial * np.exp(-gamma * x_near)
+            V_reflected_far = V_initial * np.exp(-gamma * x_far) * Gamma * np.exp(-gamma * self.length_L)
+
+            # Total voltage including near-end reflection scaling: V_total = V_incident * (1 + Gamma)
+            V_end_omega[idx] = ((V_direct + V_reflected_far) * (1.0 + Gamma)) / loop_factor
+
+        return V_end_omega
 
     def compute_response(
         self,
@@ -85,68 +116,44 @@ class StrawModel:
         input_current=None,
         default_sigma=30e-12
     ):
-        """Computes voltage waveforms using the symmetrically assigned termination parameter."""
+        """
+        Computes symmetric dual-ended voltage waveforms by strictly mirroring the
+        spatial argument constraints passed to the single-end processing primitive.
+        """
         f_max = freq_max_mhz * 1e6
         dt = 1.0 / (2.0 * f_max)
         time_axis = np.arange(num_points) * dt
         freqs = np.fft.rfftfreq(num_points, d=dt)
 
         if input_current is None or input_time is None:
-            # Fallback configuration generating a customizable Gaussian pulse
-            t0 = 5 * default_sigma if default_sigma > 0 else 2e-9
+            t0 = 2e-9
             i_t = 100e-6 * np.exp(-0.5 * ((time_axis - t0) / default_sigma) ** 2)
         else:
             i_t = np.interp(time_axis, input_time, input_current, left=0.0, right=0.0)
 
         I_omega = np.fft.rfft(i_t)
-        V_A_omega = np.zeros_like(I_omega, dtype=complex)
-        V_B_omega = np.zeros_like(I_omega, dtype=complex)
 
-        for idx, f in enumerate(freqs):
-            Z0, gamma = self._get_frequency_dependent_impedance(f)
-            Gamma = (self.Z_termination - Z0) / (self.Z_termination + Z0)
+        # Spatial constraints relative to End A and End B
+        x_A = inject_l
+        x_B = self.length_L - inject_l
 
-            x_A = inject_l
-            x_B = self.length_L - inject_l
-
-            V_fwd_initial = (I_omega[idx] * Z0) / 2.0
-            V_bwd_initial = (I_omega[idx] * Z0) / 2.0
-
-            V_A_direct = V_bwd_initial * np.exp(-gamma * x_A)
-            V_B_direct = V_fwd_initial * np.exp(-gamma * x_B)
-
-            loop_factor = 1.0 - Gamma * Gamma * np.exp(-2.0 * gamma * self.length_L)
-
-            V_A_omega[idx] = (V_A_direct * (1.0 + Gamma) + V_B_direct * Gamma * np.exp(-gamma * self.length_L) * (1.0 + Gamma)) / loop_factor
-            V_B_omega[idx] = (V_bwd_initial * Gamma * np.exp(-gamma * self.length_L) * (1.0 + Gamma) + V_B_direct * (1.0 + Gamma)) / loop_factor
+        # Symmetric by construction: swapping arguments guarantees completely mirrored behavior
+        V_A_omega = self._compute_single_end_response(x_near=x_A, x_far=x_B, freqs=freqs, I_omega=I_omega)
+        V_B_omega = self._compute_single_end_response(x_near=x_B, x_far=x_A, freqs=freqs, I_omega=I_omega)
 
         v_A = np.fft.irfft(V_A_omega, n=num_points)
         v_B = np.fft.irfft(V_B_omega, n=num_points)
         return time_axis, v_A, v_B
 
     def plot_response(self, inject_l, sigma=30e-12, time_window_ns=15.0):
-        """
-        Generates and plots the response of the straw tube to an analytical
-        Gaussian current pulse injected at a specific location.
-
-        Parameters:
-        -----------
-        inject_l : float
-            Injection position distance from End A (meters).
-        sigma : float
-            Standard deviation width of the Gaussian current pulse (seconds). Default is 30 ps.
-        time_window_ns : float
-            Maximum time limit displayed on the plot's X-axis (nanoseconds).
-        """
-        # Automatically bump bandwidth up if testing ultra-narrow pulses (<10ps) to avoid aliasing
+        """Plots the response of the straw tube to an analytical Gaussian current pulse."""
         f_max_mhz = max(15000.0, 0.5 / (sigma * 1e6) if sigma > 0 else 15000.0)
-
         t, v_A, v_B = self.compute_response(inject_l=inject_l, default_sigma=sigma, freq_max_mhz=f_max_mhz)
         t_ns = t * 1e9
 
         plt.figure(figsize=(10, 5))
-        plt.plot(t_ns, v_A * 1e3, label=f'End A (x = 0m, Z_term = {self.Z_termination} Ω)', color='#1f77b4', linewidth=1.8)
-        plt.plot(t_ns, v_B * 1e3, label=f'End B (x = {self.length_L}m, Z_term = {self.Z_termination} Ω)', color='#ff7f0e', linewidth=1.8)
+        plt.plot(t_ns, v_A * 1e3, label=f'End A (x = 0m)', color='#1f77b4', linewidth=1.8)
+        plt.plot(t_ns, v_B * 1e3, label=f'End B (x = {self.length_L}m)', color='#ff7f0e', linewidth=1.8, linestyle='--')
 
         plt.title(f'Symmetric Straw Tube Response to Gaussian Pulse (σ = {sigma*1e12:.1f} ps)\nInjection Site: {inject_l}m from End A', fontsize=11, fontweight='bold')
         plt.xlabel('Time (ns)', fontsize=11)
@@ -171,10 +178,10 @@ class StrawModel:
                     if clean and not clean.isalpha():
                         parts = clean.split()
                         if len(parts) >= 2:
-                            data.append([float(parts[0]), float(parts[1])])
+                            data.append([float(parts), float(parts)])
             data = np.array(data)
 
-        if data.ndim != 2 or data.shape[0] < 2:
+        if data.ndim != 2 or data.shape < 2:
             raise ValueError("Malformed file format. File must contain at least 2 numeric columns.")
 
         pwle_time = data[:, 0]

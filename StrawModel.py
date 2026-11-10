@@ -165,9 +165,13 @@ class StrawModel:
         plt.show()
 
     def compute_response_from_pwle(self, filepath, inject_l, **kwargs):
-        """Loads a piece-wise linear current profile file and runs the signal engine."""
+        """
+        Loads a piece-wise linear current profile file from the StrawSim data library directory,
+        extracts time and current paths, and runs the complex propagation matrix engine.
+        """
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"The target StrawSim PWLE file could not be found at: {filepath}")
+
         try:
             data = np.loadtxt(filepath, comments=['#', '//', 'A', 't', 'T'])
         except Exception:
@@ -178,17 +182,21 @@ class StrawModel:
                     if clean and not clean.isalpha():
                         parts = clean.split()
                         if len(parts) >= 2:
-                            data.append([float(parts), float(parts)])
+                            data.append([float(parts[0]), float(parts[1])])
             data = np.array(data)
 
-        if data.ndim != 2 or data.shape < 2:
-            raise ValueError("Malformed file format. File must contain at least 2 numeric columns.")
+        if data.ndim != 2 or data.shape[0] < 2:
+            raise ValueError("Malformed file format. File must contain at least 2 numeric columns: Time(s) and Current(A).")
 
         pwle_time = data[:, 0]
         pwle_current = data[:, 1]
 
+        # Return the time arrays alongside the parsed raw source vectors for standalone plotting
         t, v_A, v_B = self.compute_response(
-            inject_l=inject_l, input_time=pwle_time, input_current=pwle_current, **kwargs
+            inject_l=inject_l,
+            input_time=pwle_time,
+            input_current=pwle_current,
+            **kwargs
         )
         return t, v_A, v_B, pwle_time, pwle_current
 

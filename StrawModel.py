@@ -212,10 +212,4 @@ class StrawModel:
         ax1.grid(True, linestyle='--', alpha=0.5)
         ax1.legend(loc='upper right')
 
-        ax2.plot(t_ns, v_A_mv, label=f'End A (x = 0m, Dist = {inject_l}m)', color='#1f77b4', linewidth=1.8)
-        ax2.plot(t_ns, v_B_mv, label=f'End B (x = {self.length_L}m, Dist = {self.length_L-inject_l:.2f}m)', color='#ff7f0e', linewidth=1.8)
-        ax2.set_title(f'Output Response (Termination Load: Z_term = {self.Z_termination} Ω)', fontsize=11, fontweight='bold')
-        ax2.set_xlabel('Time (ns)', fontsize=11)
-
-        plt.xlim(0, time_window_ns)
 

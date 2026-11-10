@@ -201,23 +201,56 @@ class StrawModel:
         return t, v_A, v_B, pwle_time, pwle_current
 
     def plot_pwle_response(self, filepath, inject_l, time_window_ns=45.0, freq_max_mhz=15000.0, num_points=16384):
-        """Parses a target PWLE current file, simulates transmissions, and plots stacked axes."""
+        """
+        Parses a target PWLE current file, simulates the transmission transients, and plots
+        the input profile stacked over the generated voltage signals at both ends.
+
+        Parameters:
+        -----------
+        filepath : str
+            Local file location of the StrawSim `.txt`/`.dat` PWLE pulse configuration.
+        inject_l : float
+            Injection position distance from End A (meters).
+        time_window_ns : float
+            Maximum time limit displayed on the X-axis (nanoseconds).
+        """
+        # Run simulation and extract the raw file parameters along with outputs
         t, v_A, v_B, source_t, source_i = self.compute_response_from_pwle(
-            filepath=filepath, inject_l=inject_l, freq_max_mhz=freq_max_mhz, num_points=num_points
+            filepath=filepath,
+            inject_l=inject_l,
+            freq_max_mhz=freq_max_mhz,
+            num_points=num_points
         )
+
         t_ns = t * 1e9
         source_t_ns = source_t * 1e9
-        source_i_ua = source_i * 1e6
+        source_i_ua = source_i * 1e6  # Convert input current to microamperes for plotting
         v_A_mv = v_A * 1e3
         v_B_mv = v_B * 1e3
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
         filename = os.path.basename(filepath)
 
+        # Subplot 1: Injected Signal Source (PWLE Profile Input)
         ax1.plot(source_t_ns, source_i_ua, color='#7f7f7f', linestyle='-', linewidth=2.0, marker='.', markersize=4, label='Injected Cluster Pulse')
         ax1.set_title(f'Source Input: Injected Current Profile ({filename})', fontsize=11, fontweight='bold')
         ax1.set_ylabel('Injected Current (μA)', fontsize=10)
         ax1.grid(True, linestyle='--', alpha=0.5)
         ax1.legend(loc='upper right')
+
+        # Subplot 2: Voltage Waveform Responses at Ends A and B
+        ax2.plot(t_ns, v_A_mv, label=f'End A (x = 0m, Dist = {inject_l}m)', color='#1f77b4', linewidth=1.8)
+        ax2.plot(t_ns, v_B_mv, label=f'End B (x = {self.length_L}m, Dist = {self.length_L-inject_l:.2f}m)', color='#ff7f0e', linewidth=1.8)
+
+        ax2.set_title(f'Output Response (Termination Load: Z_term = {self.Z_termination} Ω)', fontsize=11, fontweight='bold')
+        ax2.set_xlabel('Time (ns)', fontsize=11)
+        ax2.set_ylabel('Recorded Voltage (mV)', fontsize=10)
+        ax2.grid(True, linestyle='--', alpha=0.5)
+        ax2.legend(loc='upper right')
+
+        plt.suptitle(f'Mu2e StrawSim Data Profile Transient Evaluation\nInjection Site: {inject_l}m | Total Straw Module Length: {self.length_L}m', fontsize=12, fontweight='bold', y=0.96)
+        plt.xlim(0, time_window_ns)
+        plt.tight_layout()
+        plt.show()
 
 

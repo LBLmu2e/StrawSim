@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 
 class StrawModel:
-    def __init__(self, length_L=1.0, winding_angle_deg=37.0, Z_termination=50.0):
+    def __init__(self, length_L=1.0, winding_angle_deg=37.0, Z_termination=280.0):
         """
         Initializes the straw tube detector with its physical properties, material dimensions,
         and a symmetric termination impedance applied uniformly to both ends.
@@ -24,7 +24,7 @@ class StrawModel:
         self.r_W_core = 12.25e-6
         self.r_inner_wire = 12.50e-6
         self.t_Au = 0.25e-6
-        self.D_out = 2.50e-3
+        self.D_out = 5.0e-3
 
         # Outer Shield: 2 layers, cross-wound (0.05 um per layer)
         self.t_Al_total = 0.10e-6
